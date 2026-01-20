@@ -1,124 +1,177 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8" />
 <title>Product Chat</title>
 
 <style>
-body{margin:0;font-family:Arial;background:#ece5dd;}
-#header{
-  display:flex;align-items:center;gap:10px;
-  padding:10px;background:#075e54;color:#fff;
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #ece5dd;
 }
-#header img{width:42px;height:42px;border-radius:50%;object-fit:cover}
-#chat{height:78vh;overflow-y:auto;padding:10px}
-.msg{max-width:70%;margin:6px 0;padding:8px 12px;border-radius:7px}
-.user{background:#dcf8c6;margin-left:auto}
-.agent{background:#fff;margin-right:auto}
-#input{display:flex;padding:8px;background:#f0f0f0}
-input{flex:1;padding:10px}
-button{padding:10px}
+
+/* HEADER */
+.header {
+  display: flex;
+  align-items: center;
+  padding: 10px;
+  background: #075e54;
+  color: white;
+}
+.header img {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  margin-right: 10px;
+  object-fit: cover;
+  background: #ccc;
+}
+.header .info {
+  display: flex;
+  flex-direction: column;
+}
+.header .name {
+  font-weight: bold;
+  font-size: 16px;
+}
+.header .status {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+/* CHAT */
+.chat {
+  padding: 15px;
+  height: calc(100vh - 120px);
+  overflow-y: auto;
+}
+
+/* MESSAGE */
+.msg {
+  max-width: 70%;
+  padding: 10px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.4;
+  clear: both;
+}
+.left { background: #fff; float: left; }
+.right { background: #dcf8c6; float: right; }
+
+/* INPUT */
+.input-box {
+  display: flex;
+  padding: 10px;
+  background: #f0f0f0;
+}
+.input-box input {
+  flex: 1;
+  padding: 10px;
+  border-radius: 20px;
+  border: none;
+  outline: none;
+}
+.input-box button {
+  margin-left: 10px;
+  padding: 10px 15px;
+  border: none;
+  background: #25d366;
+  color: white;
+  border-radius: 50%;
+  cursor: pointer;
+}
 </style>
 </head>
 
 <body>
 
-<div id="header">
-  <img id="productImage">
-  <div>
-    <div id="productTitle">Loading…</div>
-    <div style="font-size:12px;opacity:.8">online</div>
+<!-- HEADER -->
+<div class="header">
+  <img id="profilePic" src="https://via.placeholder.com/100">
+  <div class="info">
+    <div class="name" id="profileName">Loading...</div>
+    <div class="status">online</div>
   </div>
 </div>
 
-<div id="chat"></div>
-
-<div id="input">
-  <input id="msg" placeholder="Type message…" />
-  <button onclick="send()">Send</button>
+<!-- CHAT -->
+<div class="chat" id="chatBox">
+  <div class="msg left">Namaste 🙏 kaise madad kar sakta hoon?</div>
 </div>
 
-<!-- Firebase -->
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<!-- INPUT -->
+<div class="input-box">
+  <input id="msgInput" placeholder="Type a message..." />
+  <button onclick="sendMsg()">➤</button>
+</div>
 
 <script>
-// 🔥 FIREBASE CONFIG (APNA DALO)
-firebase.initializeApp({
-  apiKey: "XXXX",
-  authDomain: "XXXX.firebaseapp.com",
-  projectId: "XXXX"
-});
+// ===============================
+// STEP 1: GET HANDLE FROM URL
+// ===============================
+const params = new URLSearchParams(window.location.search);
+const handle = params.get("handle");
 
-const auth = firebase.auth();
-const db = firebase.firestore();
-
-// 🔹 URL PARAMS
-const q = new URLSearchParams(location.search);
-const handle = q.get("handle");
-const role = q.get("role") || "user";
-if(!handle) document.body.innerHTML="❌ No product";
-
-// 🔹 CHAT ID = PRODUCT HANDLE
-const chatId = handle;
-
-// 🔹 LOGIN
-let uid=null;
-auth.signInAnonymously().then(r=>{
-  uid=r.user.uid;
-  loadProduct();
-  listenChat();
-});
-
-// 🔹 LOAD PRODUCT (SHOPIFY)
-fetch("https://yagnamart.myshopify.com/api/2023-10/graphql.json",{
- method:"POST",
- headers:{
-  "Content-Type":"application/json",
-  "X-Shopify-Storefront-Access-Token":"STOREFRONT_TOKEN"
- },
- body:JSON.stringify({
-  query:`{productByHandle(handle:"${handle}"){title images(first:1){edges{node{url}}}}}`
- })
-})
-.then(r=>r.json())
-.then(d=>{
- const p=d.data.productByHandle;
- document.getElementById("productTitle").innerText=p.title;
- document.getElementById("productImage").src=p.images.edges[0].node.url;
-});
-
-// 🔹 LISTEN CHAT
-function listenChat(){
- const ref=db.collection("chats").doc(chatId)
-   .collection("messages").orderBy("createdAt");
-
- ref.onSnapshot(s=>{
-  chat.innerHTML="";
-  s.forEach(doc=>{
-    const m=doc.data();
-    const div=document.createElement("div");
-    div.className="msg "+m.senderRole;
-    div.innerText=m.text;
-    chat.appendChild(div);
-  });
-  chat.scrollTop=chat.scrollHeight;
- });
+if (!handle) {
+  document.getElementById("profileName").innerText = "No product selected";
+  throw new Error("Product handle missing");
 }
 
-// 🔹 SEND MESSAGE
-function send(){
- const t=msg.value.trim();
- if(!t) return;
- db.collection("chats").doc(chatId)
-  .collection("messages").add({
-    text:t,
-    senderRole:role,
-    senderId:uid,
-    createdAt:firebase.firestore.FieldValue.serverTimestamp()
+// ===============================
+// STEP 2: FETCH SHOPIFY PRODUCT
+// ===============================
+fetch(`https://www.yagnamart.com/products/${handle}.js`)
+  .then(res => {
+    if (!res.ok) throw new Error("Product not found");
+    return res.json();
+  })
+  .then(product => {
+
+    // Product name
+    document.getElementById("profileName").innerText =
+      product.title || "Product";
+
+    // Product image (SAFE)
+    let imageUrl = "";
+
+    if (product.featured_image) {
+      imageUrl = product.featured_image;
+    } else if (product.images && product.images.length > 0) {
+      imageUrl = product.images[0];
+    }
+
+    if (imageUrl) {
+      if (imageUrl.startsWith("//")) {
+        imageUrl = "https:" + imageUrl;
+      }
+      document.getElementById("profilePic").src = imageUrl;
+    }
+
+  })
+  .catch(err => {
+    console.error(err);
+    document.getElementById("profileName").innerText =
+      "Product unavailable";
   });
- msg.value="";
+
+// ===============================
+// STEP 3: LOCAL CHAT DEMO
+// ===============================
+function sendMsg() {
+  const input = document.getElementById("msgInput");
+  if (!input.value) return;
+
+  const msg = document.createElement("div");
+  msg.className = "msg right";
+  msg.innerText = input.value;
+
+  document.getElementById("chatBox").appendChild(msg);
+  input.value = "";
+
+  document.getElementById("chatBox").scrollTop =
+    document.getElementById("chatBox").scrollHeight;
 }
 </script>
 
