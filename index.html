@@ -25,7 +25,6 @@ body {
   border-radius: 50%;
   margin-right: 10px;
   object-fit: cover;
-  background: #ccc;
 }
 .header .info {
   display: flex;
@@ -107,12 +106,32 @@ body {
   <button onclick="sendMsg()">➤</button>
 </div>
 
+<!-- 🔥 FIREBASE SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
 <script>
 // ===============================
-// STEP 1: GET HANDLE FROM URL
+// 🔥 FIREBASE CONFIG (APNA DALO)
+// ===============================
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID"
+};
+
+firebase.initializeApp(firebaseConfig);
+
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+// ===============================
+// URL PARAMS
 // ===============================
 const params = new URLSearchParams(window.location.search);
 const handle = params.get("handle");
+const role = params.get("role") === "agent" ? "agent" : "user";
 
 if (!handle) {
   document.getElementById("profileName").innerText = "No product selected";
@@ -120,58 +139,76 @@ if (!handle) {
 }
 
 // ===============================
-// STEP 2: FETCH SHOPIFY PRODUCT
+// CHAT ID (PRODUCT BASED)
+// ===============================
+const chatId = "product_" + handle;
+let uid = null;
+
+// ===============================
+// AUTH + START LISTENER
+// ===============================
+auth.signInAnonymously().then(res => {
+  uid = res.user.uid;
+  listenMessages();
+});
+
+// ===============================
+// FETCH SHOPIFY PRODUCT (NO TOKEN)
 // ===============================
 fetch(`https://www.yagnamart.com/products/${handle}.js`)
-  .then(res => {
-    if (!res.ok) throw new Error("Product not found");
-    return res.json();
-  })
-  .then(product => {
-
-    // Product name
-    document.getElementById("profileName").innerText =
-      product.title || "Product";
-
-    // Product image (SAFE)
-    let imageUrl = "";
-
-    if (product.featured_image) {
-      imageUrl = product.featured_image;
-    } else if (product.images && product.images.length > 0) {
-      imageUrl = product.images[0];
+  .then(r => r.json())
+  .then(p => {
+    document.getElementById("profileName").innerText = p.title;
+    if (p.featured_image) {
+      document.getElementById("profilePic").src =
+        p.featured_image.startsWith("//")
+          ? "https:" + p.featured_image
+          : p.featured_image;
     }
-
-    if (imageUrl) {
-      if (imageUrl.startsWith("//")) {
-        imageUrl = "https:" + imageUrl;
-      }
-      document.getElementById("profilePic").src = imageUrl;
-    }
-
-  })
-  .catch(err => {
-    console.error(err);
-    document.getElementById("profileName").innerText =
-      "Product unavailable";
   });
 
 // ===============================
-// STEP 3: LOCAL CHAT DEMO
+// SEND MESSAGE
 // ===============================
 function sendMsg() {
   const input = document.getElementById("msgInput");
-  if (!input.value) return;
+  if (!input.value.trim()) return;
 
-  const msg = document.createElement("div");
-  msg.className = "msg right";
-  msg.innerText = input.value;
+  db.collection("chats")
+    .doc(chatId)
+    .collection("messages")
+    .add({
+      text: input.value,
+      senderRole: role,
+      senderId: uid,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
 
-  document.getElementById("chatBox").appendChild(msg);
   input.value = "";
+}
 
-  document.getElementById("chatBox").scrollTop =
-    document.getElementById("chatBox").scrollHeight;
+// ===============================
+// LISTEN MESSAGES (REALTIME)
+// ===============================
+function listenMessages() {
+  db.collection("chats")
+    .doc(chatId)
+    .collection("messages")
+    .orderBy("createdAt")
+    .onSnapshot(snap => {
+      document.getElementById("chatBox").innerHTML = "";
+
+      snap.forEach(doc => {
+        const d = doc.data();
+        const div = document.createElement("div");
+        div.className = "msg " + (d.senderRole === "user" ? "right" : "left");
+        div.innerText = d.text;
+        document.getElementById("chatBox").appendChild(div);
+      });
+
+      document.getElementById("chatBox").scrollTop =
+        document.getElementById("chatBox").scrollHeight;
+    });
 }
 </script>
 
