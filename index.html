@@ -1,92 +1,124 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8" />
-  <title>2-Side Chat Demo</title>
-  <style>
-    body { font-family: Arial; background:#f4f4f4; margin:0; }
-    #chat { height: 80vh; overflow-y:auto; padding:10px; }
-    .msg { margin:6px 0; padding:8px 10px; border-radius:6px; max-width:70%; }
-    .user { background:#dcf8c6; margin-left:auto; }
-    .agent { background:#fff; margin-right:auto; }
-    #input { display:flex; padding:10px; background:#eee; }
-    input { flex:1; padding:10px; }
-    button { padding:10px 15px; }
-  </style>
+<meta charset="UTF-8" />
+<title>Product Chat</title>
+
+<style>
+body{margin:0;font-family:Arial;background:#ece5dd;}
+#header{
+  display:flex;align-items:center;gap:10px;
+  padding:10px;background:#075e54;color:#fff;
+}
+#header img{width:42px;height:42px;border-radius:50%;object-fit:cover}
+#chat{height:78vh;overflow-y:auto;padding:10px}
+.msg{max-width:70%;margin:6px 0;padding:8px 12px;border-radius:7px}
+.user{background:#dcf8c6;margin-left:auto}
+.agent{background:#fff;margin-right:auto}
+#input{display:flex;padding:8px;background:#f0f0f0}
+input{flex:1;padding:10px}
+button{padding:10px}
+</style>
 </head>
+
 <body>
+
+<div id="header">
+  <img id="productImage">
+  <div>
+    <div id="productTitle">Loading…</div>
+    <div style="font-size:12px;opacity:.8">online</div>
+  </div>
+</div>
 
 <div id="chat"></div>
 
 <div id="input">
-  <input id="msg" placeholder="Type message..." />
-  <button onclick="sendMessage()">Send</button>
+  <input id="msg" placeholder="Type message…" />
+  <button onclick="send()">Send</button>
 </div>
 
-<!-- Firebase SDK -->
+<!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 
 <script>
-/* 🔥 STEP 1: Firebase config (APNA CONFIG DALO) */
-const firebaseConfig = {
+// 🔥 FIREBASE CONFIG (APNA DALO)
+firebase.initializeApp({
   apiKey: "XXXX",
   authDomain: "XXXX.firebaseapp.com",
-  projectId: "XXXX",
-};
-firebase.initializeApp(firebaseConfig);
+  projectId: "XXXX"
+});
 
 const auth = firebase.auth();
 const db = firebase.firestore();
 
-/* 🔥 STEP 2: Anonymous login */
-let currentUserId = null;
-auth.signInAnonymously().then(res => {
-  currentUserId = res.user.uid;
-  startChat();
+// 🔹 URL PARAMS
+const q = new URLSearchParams(location.search);
+const handle = q.get("handle");
+const role = q.get("role") || "user";
+if(!handle) document.body.innerHTML="❌ No product";
+
+// 🔹 CHAT ID = PRODUCT HANDLE
+const chatId = handle;
+
+// 🔹 LOGIN
+let uid=null;
+auth.signInAnonymously().then(r=>{
+  uid=r.user.uid;
+  loadProduct();
+  listenChat();
 });
 
-/* 🔥 STEP 3: FIXED CHAT ID (testing ke liye) */
-const chatId = "demo-chat-1";   // dono browser me SAME rakho
-const role = new URLSearchParams(location.search).get("role") || "user";
+// 🔹 LOAD PRODUCT (SHOPIFY)
+fetch("https://yagnamart.myshopify.com/api/2023-10/graphql.json",{
+ method:"POST",
+ headers:{
+  "Content-Type":"application/json",
+  "X-Shopify-Storefront-Access-Token":"STOREFRONT_TOKEN"
+ },
+ body:JSON.stringify({
+  query:`{productByHandle(handle:"${handle}"){title images(first:1){edges{node{url}}}}}`
+ })
+})
+.then(r=>r.json())
+.then(d=>{
+ const p=d.data.productByHandle;
+ document.getElementById("productTitle").innerText=p.title;
+ document.getElementById("productImage").src=p.images.edges[0].node.url;
+});
 
-/* 🔥 STEP 4: Start chat + listen */
-function startChat() {
-  const messagesRef = db
-    .collection("chats")
-    .doc(chatId)
-    .collection("messages")
-    .orderBy("createdAt");
+// 🔹 LISTEN CHAT
+function listenChat(){
+ const ref=db.collection("chats").doc(chatId)
+   .collection("messages").orderBy("createdAt");
 
-  messagesRef.onSnapshot(snapshot => {
-    document.getElementById("chat").innerHTML = "";
-    snapshot.forEach(doc => {
-      const d = doc.data();
-      const div = document.createElement("div");
-      div.className = "msg " + d.sender;
-      div.innerText = d.text;
-      document.getElementById("chat").appendChild(div);
-    });
+ ref.onSnapshot(s=>{
+  chat.innerHTML="";
+  s.forEach(doc=>{
+    const m=doc.data();
+    const div=document.createElement("div");
+    div.className="msg "+m.senderRole;
+    div.innerText=m.text;
+    chat.appendChild(div);
   });
+  chat.scrollTop=chat.scrollHeight;
+ });
 }
 
-/* 🔥 STEP 5: Send message */
-function sendMessage() {
-  const text = document.getElementById("msg").value;
-  if (!text) return;
-
-  db.collection("chats")
-    .doc(chatId)
-    .collection("messages")
-    .add({
-      sender: role,          // "user" or "agent"
-      senderId: currentUserId,
-      text: text,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-
-  document.getElementById("msg").value = "";
+// 🔹 SEND MESSAGE
+function send(){
+ const t=msg.value.trim();
+ if(!t) return;
+ db.collection("chats").doc(chatId)
+  .collection("messages").add({
+    text:t,
+    senderRole:role,
+    senderId:uid,
+    createdAt:firebase.firestore.FieldValue.serverTimestamp()
+  });
+ msg.value="";
 }
 </script>
 
